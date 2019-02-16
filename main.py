@@ -2,6 +2,7 @@ from flask import request, Flask, make_response
 import jwt
 import requests
 import time
+import json
 import uuid
 import os
 import tempfile
@@ -41,6 +42,12 @@ app.config['SECRET_KEY'] = SECRET_KEY
 @app.route('/')
 def index():
     return "These are not the doors you are looking for."
+
+@app.route('/status')
+def status():
+    current_value = str(DOOR_STATUS)
+    DOOR_STATUS = 0
+    return current_value
 
 @app.route('/auth')
 def auth():
@@ -129,7 +136,7 @@ def door_request():
 def door_open():
 
     print(request.form['payload'])
-    message = JSON.parse(request.form['payload'])
+    message = json.loads(request.form['payload'])
 
     try:
         callback_id = message['callback_id']
@@ -140,7 +147,6 @@ def door_open():
     except:
         return "Invalid request.", 400
 
-    print(message)
     if callback_id != "door_request_response" or user_id.upper() not in ADMIN_USERS:
         return "Ignoring...", 200
 
@@ -150,17 +156,13 @@ def door_open():
         "ts" : message_timestamp
     }
 
-
     if answer_is_yes:
-        text = f"Door opened by <@{user_id}> for <@requested_user>."
+        text = f"Door opened by <@{user_id}> for {requested_user}."
+        DOOR_STATUS = 1
     else:
-        text = f"<@{user_id}> rejected request from <@requested_user>."
+        text = f"<@{user_id}> rejected request from {requested_user}."
 
     return text, 200
-    # message['text'] = text
-    # response = requests.post(POST_MESSAGE_URL, headers=headers, json=message)
-    # return "Done", 200
-    # print(response.text)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8888, debug=True)
