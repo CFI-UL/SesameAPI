@@ -31,8 +31,8 @@ ADMIN_CHANNEL_ID = os.environ['ADMIN_CHANNEL_ID']
 ADMIN_USERS = os.environ['ADMIN_USERS'].split(";")
 
 # Globals
-DOOR_STATUS = 0
-LAST_USER_LOGINS = {}
+DOOR_STATUS = 1
+PENDING_REQUESTS = set()
 
 # Configuration
 app = Flask(__name__)
@@ -45,6 +45,7 @@ def index():
 
 @app.route('/status')
 def status():
+    global DOOR_STATUS
     current_value = str(DOOR_STATUS)
     DOOR_STATUS = 0
     return current_value
@@ -80,7 +81,7 @@ def auth():
         response.headers['Location'] = f"{MOBILE_SCHEME}?access_token={signed}"
         return response, 302
 
-    # return "Unhandled Slack response", 400
+    return "Unhandled Slack response", 400
 
 @app.route('/door/request', methods=['POST'])
 def door_request():
@@ -101,6 +102,9 @@ def door_request():
 
     if not user_token:
         return "Invalid auth token.", 401
+
+    if user_id in PENDING_REQUESTS:
+        return "You already sent a request.", 429
 
     message = {
         "channel" : ADMIN_CHANNEL_ID,
@@ -130,12 +134,14 @@ def door_request():
 
     headers = { "Authorization" : f"Bearer {APP_TOKEN}" }
     response = requests.post(POST_MESSAGE_URL, headers=headers, json=message)
+
+    PENDING_REQUESTS.add(user_id)
     return "", 200
 
 @app.route('/door/open', methods=['POST'])
 def door_open():
+    global DOOR_STATUS
 
-    print(request.form['payload'])
     message = json.loads(request.form['payload'])
 
     try:
@@ -143,12 +149,12 @@ def door_open():
         user_id = message['user']['id']
         answer_is_yes = message['actions'][0]['value'] == "yes"
         message_timestamp = message['message_ts']
-        requested_user = re.findall('Request from (.+)', message['original_message']['text'])[0]
+        requested_user = re.findall('Request from <@(.+)>', message['original_message']['text'])[0]
     except:
         return "Invalid request.", 400
 
     if callback_id != "door_request_response" or user_id.upper() not in ADMIN_USERS:
-        return "Ignoring...", 200
+        return "", 200
 
     headers = { "Authorization" : f"Bearer {APP_TOKEN}" }
     message = {
@@ -157,11 +163,13 @@ def door_open():
     }
 
     if answer_is_yes:
-        text = f"Door opened by <@{user_id}> for {requested_user}."
+        text = f"Door opened by <@{user_id}> for <@{requested_user}>."
         DOOR_STATUS = 1
     else:
-        text = f"<@{user_id}> rejected request from {requested_user}."
+        text = f"<@{user_id}> rejected request from <@{requested_user}>."
 
+
+    PENDING_REQUESTS = set()
     return text, 200
 
 if __name__ == '__main__':
