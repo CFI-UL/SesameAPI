@@ -141,6 +141,7 @@ def door_request():
 @app.route('/door/open', methods=['POST'])
 def door_open():
     global DOOR_STATUS
+    global PENDING_REQUESTS
 
     message = json.loads(request.form['payload'])
 
